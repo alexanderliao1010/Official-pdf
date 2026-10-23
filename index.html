@@ -1,0 +1,622 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>工程發文系統</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=LXGW+WenKai+TC:wght@400;700&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+/* 版面：上方輸入工作台（格線，窄螢幕堆疊），下方 A4 公文預覽列（正本＋副本×2，可橫向捲動） */
+:root{
+  --bg:#eef1f4; --panel:#ffffff; --ink:#1d2731; --muted:#5d6b78; --line:#d3d9e0;
+  --accent:#1f4e79; --accent-ink:#ffffff; --seal:#a33a2c; --field:#e3efff; --field-line:#123a6b; --plain:#f7f9fb; --desk:#d9dee4;
+  --ok:#2f7a4a;
+  --ui:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+  --kai:Calibri,Carlito,"DFKai-SB","標楷體","BiauKai","TW-Kai","Kaiti TC","LXGW WenKai TC",serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#151b21; --panel:#1d252d; --ink:#e3e8ed; --muted:#9aa7b3; --line:#33404c;
+  --accent:#7fb0dc; --accent-ink:#0f1820; --seal:#e07a6a; --field:#17304d; --field-line:#8cbcf0; --plain:#18212a; --desk:#0f1418; --ok:#6cc08a; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#151b21; --panel:#1d252d; --ink:#e3e8ed; --muted:#9aa7b3; --line:#33404c;
+  --accent:#7fb0dc; --accent-ink:#0f1820; --seal:#e07a6a; --field:#17304d; --field-line:#8cbcf0; --plain:#18212a; --desk:#0f1418; --ok:#6cc08a; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--ui);font-size:14px;margin:0}
+.wrap{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:16px 32px;max-width:1500px;margin:0 auto}
+header.top{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+h1{font-size:20px;margin:0;font-weight:700;letter-spacing:.04em;display:flex;align-items:center;gap:10px}
+h1 .stamp{display:inline-grid;place-items:center;width:30px;height:30px;border:2px solid var(--seal);color:var(--seal);border-radius:4px;font-size:15px;font-family:var(--kai)}
+.status{font-size:12px;color:var(--muted)}
+.status.ok{color:var(--ok)}
+.btns{display:flex;flex-wrap:wrap;gap:8px}
+button{font:inherit;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:7px 12px;border-radius:6px;cursor:pointer}
+button:hover{border-color:var(--accent)}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:500}
+button.small{padding:3px 8px;font-size:12px}
+button.danger{color:var(--seal)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px}
+.grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:12px 16px}
+.f{display:flex;flex-direction:column;gap:4px;min-width:0}
+.f>label,.lab{font-size:12px;color:var(--muted);letter-spacing:.06em}
+.c3{grid-column:span 3}.c4{grid-column:span 4}.c5{grid-column:span 5}.c6{grid-column:span 6}.c8{grid-column:span 8}.c12{grid-column:span 12}
+@media (max-width:980px){.c3,.c4,.c5{grid-column:span 6}.c8{grid-column:span 12}}
+@media (max-width:620px){.grid>*{grid-column:span 12!important}}
+input,select,textarea{font:inherit;color:var(--ink);background:var(--plain);border:1px solid var(--line);border-radius:6px;padding:7px 9px;width:100%;min-width:0}
+input.combo,input[type=date],select{background:var(--field);border:2px solid var(--field-line);padding:6px 8px}
+input[type=radio],input[type=range]{border:none;background:none}
+textarea{resize:vertical;min-height:58px;line-height:1.6}
+.row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.row>input,.row>select{flex:1 1 120px}
+.no{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.no input.pre{flex:1 1 120px}
+.no .code{font-variant-numeric:tabular-nums;font-family:var(--ui);padding:7px 8px;background:var(--bg);border-radius:6px;border:1px dashed var(--line)}
+.no input.ser{width:64px;flex:0 0 64px;text-align:center;font-variant-numeric:tabular-nums}
+.fixed{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
+.fixed .tag{padding:6px 10px;border-radius:6px;background:var(--bg);border:1px solid var(--line);font-size:13px;min-width:0;overflow-wrap:anywhere}
+.fixed input{width:8.5em;flex:0 0 8.5em}
+.radios{display:flex;gap:14px;align-items:center;flex-wrap:wrap;font-size:13px}
+.radios label{display:flex;gap:5px;align-items:center;cursor:pointer}
+.radios input{width:auto}
+.phr{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
+.phr select{flex:1 1 200px;font-size:12px;padding:5px 7px}
+.hint{font-size:12px;color:var(--muted)}
+/* 案場方塊 */
+.sites{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:10px;margin-bottom:14px}
+.site{aspect-ratio:1;max-width:100%;min-width:0;display:flex;flex-direction:column;justify-content:space-between;align-items:flex-start;text-align:left;padding:12px;border:1.5px solid var(--line);border-radius:10px;background:var(--panel);font-size:13px;line-height:1.45}
+.site .nm{display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical;overflow:hidden;font-weight:500;overflow-wrap:anywhere}
+.site .ct{font-size:11px;color:var(--muted)}
+.site.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.site.on .ct{color:inherit;opacity:.85}
+.site.add{border-style:dashed;align-items:center;justify-content:center;color:var(--muted);font-size:14px}
+.panel-bar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--line)}
+.panel-bar strong{font-size:15px;min-width:0;overflow-wrap:anywhere}
+.lockpill{font-size:12px;padding:3px 9px;border-radius:999px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+.lockpill.on{border-color:var(--seal);color:var(--seal)}
+input:disabled,input.combo:disabled{background:var(--bg);border:1px dashed var(--line);padding:7px 9px;color:var(--ink);-webkit-text-fill-color:var(--ink);opacity:1}
+button:disabled{opacity:.45;cursor:not-allowed}
+button:disabled:hover{border-color:var(--line)}
+/* 預覽區 */
+.pv-head{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin:20px 0 8px}
+.pv-head h2{font-size:15px;margin:0;font-weight:700}
+.zoom{display:flex;gap:8px;align-items:center;font-size:12px;color:var(--muted)}
+.zoom input{width:140px;padding:0}
+.desk{background:var(--desk);border-radius:10px;padding:20px;overflow-x:auto}
+.pages{display:flex;gap:24px;width:max-content}
+.pagewrap{display:flex;flex-direction:column;gap:6px}
+.pagecap{font-size:12px;color:var(--muted)}
+/* A4 公文（單位 pt，對照原稿量測） */
+.page{width:595pt;height:842pt;background:#fff;color:#000;padding:54pt 45pt 36pt 54pt;position:relative;box-shadow:0 2px 10px rgba(0,0,0,.18);font-family:var(--kai);line-break:strict;overflow:hidden}
+.page .lat{margin:0 .22em}
+.page .lbl{font-size:12pt;line-height:18pt;font-weight:700}
+.page .ttl{font-size:20pt;line-height:28pt;font-weight:700;padding-left:135pt;margin-bottom:14pt;position:relative;white-space:nowrap}
+.page .ttl .han{position:absolute;left:332pt;top:0}
+.page .addr{padding-left:262pt;font-size:12pt;line-height:16.7pt}
+.page .hang12{padding-left:36pt;text-indent:-36pt}
+.page .meta{font-size:12pt;line-height:16.7pt}
+.page .subj{margin-top:41.5pt;font-size:16pt;line-height:20.8pt;padding-left:48pt;text-indent:-48pt;text-align:justify}
+.page .desc{margin-top:25.5pt;font-size:16pt;line-height:20.8pt}
+.page .ditem{font-size:16pt;line-height:20.8pt;padding-left:32pt;text-indent:-32pt;text-align:justify}
+.page .foot{position:absolute;top:655pt;left:54pt;right:45pt}
+.page .foot .cc{font-size:12pt;line-height:16.7pt;padding-left:36pt;text-indent:-36pt}
+.page .sign{margin-top:31pt;font-size:20pt;line-height:28pt;font-weight:700;padding-left:95pt;position:relative;white-space:nowrap}
+.page .sign .rep{position:absolute;left:296pt;top:0;letter-spacing:12pt}
+.page .hl{background:#fff3b0}
+/* 對話框 */
+.dlg{position:fixed;inset:0;background:rgba(10,15,20,.45);display:flex;align-items:flex-start;justify-content:center;padding:max(24px,env(safe-area-inset-top,0px)) max(12px,env(safe-area-inset-right,0px)) 24px max(12px,env(safe-area-inset-left,0px));z-index:50;overflow-y:auto}
+.dlg .box{background:var(--panel);border:1px solid var(--line);border-radius:12px;width:min(980px,100%);padding:18px;display:flex;flex-direction:column;gap:14px}
+.dlg[hidden]{display:none}
+.dlg h3{margin:0;font-size:16px}
+.tabs{display:flex;gap:4px;flex-wrap:wrap;border-bottom:1px solid var(--line)}
+.tabs button{border:none;border-bottom:2px solid transparent;border-radius:0;background:none;padding:8px 12px}
+.tabs button.on{border-bottom-color:var(--accent);color:var(--accent);font-weight:700}
+.list{display:flex;flex-direction:column;gap:10px}
+.item{border:1px solid var(--line);border-radius:8px;padding:10px;display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:8px 10px;align-items:end}
+@media (max-width:620px){.item>*{grid-column:span 12!important}}
+.item .f{grid-column:span 4}
+.item .wide{grid-column:span 8}
+.item .act{grid-column:span 12;display:flex;justify-content:flex-end;gap:6px}
+.contacts{grid-column:span 12;display:flex;flex-direction:column;gap:6px}
+.contacts .row input{flex:1 1 140px}
+.foot-btns{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.rec{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:4px 12px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+.rec .no2{font-variant-numeric:tabular-nums;font-size:12px;color:var(--muted)}
+.rec .s{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.empty{color:var(--muted);padding:16px 0}
+@media (prefers-reduced-motion:no-preference){button{transition:border-color .15s}}
+[hidden]{display:none!important}
+#printArea{display:none}
+.cfg{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 14px}
+@media (max-width:620px){.cfg{grid-template-columns:1fr}}
+@page{size:A4;margin:0}
+@media print{
+  body{background:#fff!important}
+  body>*:not(#printArea){display:none!important}
+  #printArea{display:block}
+  #printArea .page{box-shadow:none;page-break-after:always;break-after:page;margin:0}
+  #printArea .page:last-child{page-break-after:auto;break-after:auto}
+  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1><span class="stamp">函</span>工程發文系統</h1>
+    <div class="btns">
+      <span id="status" class="status" style="align-self:center">讀取資料中…</span>
+      <button id="btnCfg">GitHub 連線</button>
+      <button id="btnManage">資料管理</button>
+      <button id="btnRecords">發文紀錄</button>
+      <button id="btnDocx" class="primary">下載 Word</button>
+    </div>
+  </header>
+
+  <nav class="sites" id="sites" aria-label="案場"></nav>
+
+  <section class="panel">
+    <div class="panel-bar">
+      <div class="row" style="min-width:0"><strong id="siteTitle"></strong><span id="lockPill" class="lockpill"></span></div>
+      <div class="btns"><span id="saveState" class="hint" style="align-self:center"></span><button id="btnSave" class="primary">儲存內容</button><button id="btnPrint" disabled title="儲存後才能列印">列印</button></div>
+    </div>
+    <div class="grid">
+      <div class="f c6"><label for="selProject">招標工程名稱</label>
+        <input id="selProject" autocomplete="off" placeholder="輸入招標工程名稱"></div>
+      <div class="f c3"><label for="inDate">發文日期</label>
+        <input id="inDate" type="date"></div>
+      <div class="f c3"><label for="inPrefix">發文字號</label>
+        <div class="no"><input id="inPrefix" class="pre" placeholder="例：硯竹字第"><span id="dateCode" class="code">1151023</span><input id="inSerial" class="ser" maxlength="3" inputmode="numeric" value="001"><span>號</span>
+          <button id="btnSavePrefix" class="small" title="將字號開頭存入此工程">存入</button></div></div>
+
+      <div class="f c4"><label for="selContractor">營造方（發文單位・副本2）</label>
+        <input id="selContractor" class="combo" list="dlContractor" autocomplete="off"><datalist id="dlContractor"></datalist>
+        <div class="row"><input id="selContact" class="combo" list="dlContact" autocomplete="off" title="聯絡人" aria-label="聯絡人"><datalist id="dlContact"></datalist><input id="inMobile" title="聯絡人手機" aria-label="聯絡人手機" placeholder="手機"></div></div>
+      <div class="f c4"><label for="selSupervisor">監造（正本受文者）</label>
+        <input id="selSupervisor" class="combo" list="dlSupervisor" autocomplete="off"><datalist id="dlSupervisor"></datalist></div>
+      <div class="f c4"><label for="selOwner">業主（副本1受文者）</label>
+        <input id="selOwner" class="combo" list="dlOwner" autocomplete="off"><datalist id="dlOwner"></datalist></div>
+
+      <div class="f c12"><label for="inSubject">主旨</label>
+        <div class="fixed"><input id="inLead" class="combo" list="dlLead" autocomplete="off" title="開頭用語" aria-label="開頭用語"><datalist id="dlLead"></datalist><span class="tag" id="leadTag">「工程名稱」</span><span class="hint">＋ 後續文字：</span></div>
+        <textarea id="inSubject" rows="2" placeholder="例：謹訂於115年10月05日正式開工，隨文檢附工程開工報告表及工地相關人員登錄表各乙式三份，惠請鑒核。"></textarea>
+        <div class="phr"><select id="phSubject"><option value="">－ 套用常用主旨 －</option></select><button class="small" id="phSubjectAdd">存為常用</button><button class="small danger" id="phSubjectDel">刪除所選</button></div></div>
+
+      <div class="f c8"><label for="inAttach">附件</label>
+        <textarea id="inAttach" rows="2" placeholder="例：工程開工報告表、工地相關人員登錄表"></textarea>
+        <div class="phr"><select id="phAttach"><option value="">－ 套用常用附件 －</option></select><button class="small" id="phAttachAdd">存為常用</button><button class="small danger" id="phAttachDel">刪除所選</button></div></div>
+      <div class="f c4"><span class="lab">附件後標註</span>
+        <div class="radios" style="min-height:38px">
+          <label><input type="radio" name="noAtt" id="noAtt1" value="1" checked>(副本無附件)</label>
+          <label><input type="radio" name="noAtt" id="noAtt0" value="0">空白</label></div>
+        <span class="hint">說明欄自動帶入：一、履約管理程序；二、副本抄送業主。</span></div>
+    </div>
+  </section>
+
+  <div class="pv-head">
+    <h2>Word 預覽：正本・副本・副本</h2>
+    <label class="zoom" for="zoom">縮放 <input id="zoom" type="range" min="35" max="100" value="55"><span id="zoomVal">55%</span></label>
+  </div>
+  <div class="desk"><div class="pages" id="pages"></div></div>
+</div>
+
+<div class="dlg" id="dlgCfg" hidden>
+  <div class="box">
+    <div class="foot-btns"><h3>GitHub 資料連線</h3><button id="cfgClose">關閉</button></div>
+    <p class="hint" style="margin:0">資料存放在您的私人 repo 裡的 data.json。權杖只存在這台裝置的瀏覽器，不會上傳到別處。每台電腦或手機第一次使用時要設定一次。</p>
+    <div class="cfg">
+      <div class="f"><label for="cfgOwner">GitHub 帳號</label><input id="cfgOwner" autocomplete="off"></div>
+      <div class="f"><label for="cfgRepo">資料 repo（私人）</label><input id="cfgRepo" autocomplete="off"></div>
+      <div class="f"><label for="cfgPath">資料檔名</label><input id="cfgPath" autocomplete="off"></div>
+      <div class="f"><label for="cfgToken">存取權杖（Personal access token）</label><input id="cfgToken" type="password" autocomplete="off" placeholder="github_pat_…"></div>
+    </div>
+    <div class="foot-btns"><span id="cfgMsg" class="hint"></span><button id="cfgSave" class="primary">連線並讀取資料</button></div>
+  </div>
+</div>
+
+<div class="dlg" id="dlgManage" hidden>
+  <div class="box">
+    <div class="foot-btns"><h3>資料管理</h3><button id="mgClose">關閉</button></div>
+    <div class="tabs" id="mgTabs">
+      <button data-t="projects" class="on">工程</button>
+      <button data-t="contractors">營造方</button>
+      <button data-t="supervisors">監造</button>
+      <button data-t="owners">業主</button>
+    </div>
+    <div class="list" id="mgList"></div>
+    <div class="foot-btns"><button id="mgAdd">＋ 新增</button><button id="mgSave" class="primary">儲存全部變更</button></div>
+  </div>
+</div>
+
+<div class="dlg" id="dlgRecords" hidden>
+  <div class="box">
+    <div class="foot-btns"><h3>發文紀錄</h3><button id="rcClose">關閉</button></div>
+    <div id="rcList"></div>
+  </div>
+</div>
+
+<script>
+const DEFAULTS={
+  contractors:[{id:"c1",name:"硯森營造有限公司",address:"新竹市東區綠水里光復路二段295號14樓之8",phone:"03-353-0288",rep:"李豐榆",contacts:[{name:"廖曉華",mobile:"0926-992648"},{name:"李豐榆",mobile:"0915-255-998"}]}],
+  supervisors:[{id:"s1",name:"豫青設計有限公司"},{id:"s2",name:"聯安工程顧問有限公司"}],
+  owners:[{id:"o1",name:"農業部林業及自然保育署新竹分署"},{id:"o2",name:"桃園市大溪區公所"}],
+  projects:[
+    {id:"p1",name:"農業部林業及自然保育署新竹分署國產材推廣中心景觀綠美化工程",supervisorId:"s1",ownerId:"o1",contractorId:"c1",prefix:"硯竹字第"},
+    {id:"p2",name:"大溪區綜合市民活動中心4樓桌球場域及多功能教室設置計畫",supervisorId:"s2",ownerId:"o2",contractorId:"c1",prefix:"硯桃市溪字第"}],
+  subjectPhrases:[
+    "謹訂於115年10月05日正式開工，隨文檢附工程開工報告表及工地相關人員登錄表各乙式三份，惠請鑒核。",
+    "整體施工計畫及品質計畫各一式三份，惠請鑒核。",
+    "已完成營建工程空氣污染防制費繳費，隨文檢附營造綜合保險單及雇主意外責任保險單正本各一份，以及營建工程空氣污染防制費繳費收據影本一份，惠請鑒核。",
+    "運動地墊項目預算與廠商詢價金額差異一案，敬請協助釐清並提報業主研議，請查照。"],
+  attachPhrases:["工程開工報告表、工地相關人員登錄表","整體施工計畫書及品質計畫書一式三份","營造綜合保險單、雇主意外責任保險單、營建工程空氣污染防制費繳費收據影本"]
+};
+const $=id=>document.getElementById(id);
+const clone=o=>JSON.parse(JSON.stringify(o));
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const uid=p=>p+Date.now().toString(36)+Math.random().toString(36).slice(2,5);
+
+let store=null, letters=[], mode="loading", fileSha=null;
+const today=new Date(); const pad=n=>String(n).padStart(2,"0");
+let form={projectId:"",contractorId:"",contactIdx:0,supervisorId:"",ownerId:"",date:`${today.getFullYear()}-${pad(today.getMonth()+1)}-${pad(today.getDate())}`,prefix:"",serial:"001",lead:"有關",subject:"",attach:"",noAtt:true};
+
+function setStatus(t,ok){const s=$("status");s.textContent=t;s.className="status"+(ok?" ok":"");}
+const find=(arr,id)=>(arr||[]).find(x=>x.id===id);
+function roc(d){const [y,m,dd]=d.split("-");return {y:String(+y-1911),m,d:dd};}
+function dateCode(){if(!form.date)return "";const r=roc(form.date);return r.y+r.m+r.d;}
+function docNo(){return `${form.prefix}${dateCode()}${form.serial}號`;}
+
+/* ---------- 儲存層（GitHub 私人 repo 的 data.json） ---------- */
+function lsGet(k){try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}}
+function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
+let cfg=Object.assign({owner:"alexanderliao1010",repo:"fawen-data",path:"data.json",token:""},lsGet("fawen_cfg")||{});
+const b64e=str=>{const by=new TextEncoder().encode(str);let bin="";for(let i=0;i<by.length;i+=0x8000)bin+=String.fromCharCode.apply(null,by.subarray(i,i+0x8000));return btoa(bin);};
+const b64d=b=>new TextDecoder().decode(Uint8Array.from(atob(b.replace(/\s/g,"")),c=>c.charCodeAt(0)));
+function apiUrl(){return `https://api.github.com/repos/${encodeURIComponent(cfg.owner)}/${encodeURIComponent(cfg.repo)}/contents/${cfg.path.split("/").map(encodeURIComponent).join("/")}`;}
+function hdr(){return {"Accept":"application/vnd.github+json","Authorization":"Bearer "+cfg.token,"X-GitHub-Api-Version":"2022-11-28"};}
+function normalize(o){o=o||{};o.store=o.store||clone(DEFAULTS);o.letters=Array.isArray(o.letters)?o.letters:[];
+  ["contractors","supervisors","owners","projects","subjectPhrases","attachPhrases"].forEach(k=>{if(!Array.isArray(o.store[k]))o.store[k]=[]});return o;}
+async function ghGet(){
+  const r=await fetch(apiUrl()+"?t="+Date.now(),{headers:hdr(),cache:"no-store"});
+  if(r.status===404)return {missing:true};
+  if(r.status===401)throw new Error("權杖無效或已過期");
+  if(!r.ok)throw new Error("讀取失敗（"+r.status+"）");
+  const j=await r.json();return {sha:j.sha,obj:normalize(JSON.parse(b64d(j.content)))};
+}
+async function ghPut(obj,sha,msg){
+  const body={message:msg||"更新發文資料",content:b64e(JSON.stringify(obj,null,1))};if(sha)body.sha=sha;
+  const r=await fetch(apiUrl(),{method:"PUT",headers:{...hdr(),"Content-Type":"application/json"},body:JSON.stringify(body)});
+  if(r.status===409||r.status===422)return {conflict:true};
+  if(!r.ok)throw new Error("寫入失敗（"+r.status+"）");
+  const j=await r.json();return {sha:j.content.sha};
+}
+/* 先讀最新版，套用修改後寫回；遇到別台裝置同時寫入就重試 */
+async function mutate(fn,msg){
+  if(mode!=="gh"){const o={store,letters};fn(o);store=o.store;letters=o.letters;lsSet("fawen_local",{store,letters});return true;}
+  setStatus("儲存中…");
+  for(let t=0;t<3;t++){
+    const g=await ghGet();const o=g.missing?normalize({store:clone(store),letters:clone(letters)}):g.obj;
+    fn(o);const p=await ghPut(o,g.missing?null:g.sha,msg);
+    if(!p.conflict){fileSha=p.sha;store=o.store;letters=o.letters;return true;}
+  }
+  throw new Error("資料同時被修改，請重新整理後再試");
+}
+async function saveStore(){
+  try{const snap=clone(store);await mutate(o=>{o.store=snap;},"更新基本資料");setStatus(mode==="gh"?"已儲存到 GitHub":"已儲存（本機瀏覽器）",true);}
+  catch(e){setStatus("儲存失敗："+e.message);}
+}
+async function connect(){
+  if(!cfg.token){mode="local";const l=lsGet("fawen_local");if(l){store=normalize(l).store;letters=normalize(l).letters;}
+    setStatus("尚未連線 GitHub，資料暫存在本機");renderAll(true);return false;}
+  setStatus("讀取 GitHub 資料中…");
+  try{
+    const g=await ghGet();mode="gh";
+    if(g.missing){const o=normalize({store:clone(store||DEFAULTS),letters:clone(letters)});const p=await ghPut(o,null,"建立發文資料");fileSha=p.sha;store=o.store;letters=o.letters;setStatus("已在 GitHub 建立 "+cfg.path,true);}
+    else{fileSha=g.sha;store=g.obj.store;letters=g.obj.letters;setStatus("已連線 GitHub",true);}
+    form.projectId="";renderAll(true);return true;
+  }catch(e){mode="local";setStatus("GitHub 連線失敗："+e.message);return false;}
+}
+async function init(){
+  store=clone(DEFAULTS);letters=[];renderAll(true);
+  const ok=await connect();
+  if(!cfg.token)openCfg();
+}
+function openCfg(){$("cfgOwner").value=cfg.owner;$("cfgRepo").value=cfg.repo;$("cfgPath").value=cfg.path;$("cfgToken").value=cfg.token;$("cfgMsg").textContent="";$("dlgCfg").hidden=false;}
+
+/* ---------- 表單 ---------- */
+function opts(sel,arr,val,label=x=>x.name,empty){
+  sel.innerHTML=(empty?`<option value="">${empty}</option>`:"")+arr.map(x=>`<option value="${esc(x.id)}">${esc(label(x))}</option>`).join("");
+  if(val&&arr.some(x=>x.id===val))sel.value=val;else if(!empty&&arr[0])sel.value=arr[0].id;
+  return sel.value;
+}
+function fillList(id,names){$(id).innerHTML=names.map(n=>`<option value="${esc(n)}"></option>`).join("");}
+function setVal(id,v){const el=$(id);if(document.activeElement!==el)el.value=v??"";}
+function combo(inId,dlId,arr,val){fillList(dlId,arr.map(x=>x.name));if(!arr.some(x=>x.id===val))val=arr[0]?.id||"";setVal(inId,find(arr,val)?.name||"");return val;}
+function pick(kind,el,make){const v=el.value.trim();if(!v)return null;let x=store[kind].find(o=>o.name===v),created=false;if(!x){x=make(v);store[kind].push(x);created=true;}return {x,created};}
+function applyProject(p){
+  if(!p)return;
+  form.projectId=p.id;
+  if(p.supervisorId)form.supervisorId=p.supervisorId;
+  if(p.ownerId)form.ownerId=p.ownerId;
+  if(p.contractorId)form.contractorId=p.contractorId;
+  form.prefix=p.prefix||"";
+  form.serial=nextSerial();
+}
+function nextSerial(){
+  const used=letters.filter(l=>l.prefix===form.prefix&&l.dateCode===dateCode()).map(l=>+l.serial||0);
+  return pad3(used.length?Math.max(...used)+1:1);
+}
+const pad3=n=>String(n).padStart(3,"0");
+function renderForm(first){
+  if(first&&!form.projectId&&store.projects[0]){applyProject(store.projects[0]);
+    if(!form.subject&&store.subjectPhrases[0])setPhrase(store.subjectPhrases[0]);
+    if(!form.attach&&store.attachPhrases[0])form.attach=store.attachPhrases[0];}
+  if(!find(store.projects,form.projectId))form.projectId=store.projects[0]?.id||"";
+  const proj=find(store.projects,form.projectId);setVal("selProject",proj?.name||"");
+  const locked=isLocked(form.projectId);
+  ["selProject","selContractor","selSupervisor","selOwner"].forEach(id=>$(id).disabled=locked||!proj);
+  $("siteTitle").textContent=proj?(proj.name||"（未命名案場）"):"請先新增案場";
+  $("lockPill").textContent=locked?"已鎖定：工程名稱・營造・監造・業主":"首次儲存後鎖定";$("lockPill").className="lockpill"+(locked?" on":"");
+  form.contractorId=combo("selContractor","dlContractor",store.contractors,form.contractorId);
+  const c=find(store.contractors,form.contractorId);
+  const cs=(c?.contacts||[]);
+  if(form.contactIdx>=cs.length)form.contactIdx=0;
+  fillList("dlContact",cs.map(x=>x.name));
+  setVal("selContact",cs[form.contactIdx]?.name||"");setVal("inMobile",cs[form.contactIdx]?.mobile||"");
+  form.supervisorId=combo("selSupervisor","dlSupervisor",store.supervisors,form.supervisorId);
+  form.ownerId=combo("selOwner","dlOwner",store.owners,form.ownerId);
+  const leads=["有關","檢送","檢附","檢附本案","檢附有關"];store.subjectPhrases.forEach(t=>{if(t&&t.lead&&!leads.includes(t.lead))leads.push(t.lead)});
+  fillList("dlLead",leads);
+  $("inDate").value=form.date;$("inPrefix").value=form.prefix;$("inSerial").value=form.serial;
+  $("dateCode").textContent=dateCode()||"———";
+  setVal("inLead",form.lead);
+  $("inSubject").value=form.subject;$("inAttach").value=form.attach;
+  $("noAtt1").checked=form.noAtt;$("noAtt0").checked=!form.noAtt;
+  $("phSubject").innerHTML=`<option value="">－ 套用常用主旨 －</option>`+store.subjectPhrases.map((t,i)=>`<option value="${i}">${esc(typeof t==="string"?t:`〔${t.lead}〕${t.text}`)}</option>`).join("");
+  $("phAttach").innerHTML=`<option value="">－ 套用常用附件 －</option>`+store.attachPhrases.map((t,i)=>`<option value="${i}">${esc(t)}</option>`).join("");
+  $("leadTag").textContent=`「${find(store.projects,form.projectId)?.name||"工程名稱"}」`;
+}
+function renderAll(first){renderForm(first);renderSites();renderPreview();}
+function isLocked(pid){return !!pid&&letters.some(l=>l.projectId===pid);}
+function renderSites(){
+  $("sites").innerHTML=store.projects.map(p=>{const n=letters.filter(l=>l.projectId===p.id).length;
+    return `<button class="site${p.id===form.projectId?" on":""}" data-pid="${esc(p.id)}"><span class="nm">${esc(p.name||"（未命名案場）")}</span><span class="ct">${n} 份發文${n?"・已鎖定":""}</span></button>`;}).join("")
+    +`<button class="site add" id="siteAdd">＋ 新增案場</button>`;
+}
+let savedSig=null;
+function sig(){return JSON.stringify([form,data()]);}
+function updateSaveState(){
+  const ok=!!savedSig&&sig()===savedSig;$("btnPrint").disabled=!ok;
+  $("saveState").textContent=ok?"已儲存，可列印":savedSig?"內容已修改，請重新儲存":"尚未儲存";
+}
+function syncProject(){const p=find(store.projects,form.projectId);if(!p||isLocked(p.id))return false;
+  p.supervisorId=form.supervisorId;p.ownerId=form.ownerId;p.contractorId=form.contractorId;return true;}
+
+/* ---------- 預覽 ---------- */
+function data(){
+  const p=find(store.projects,form.projectId)||{name:""};
+  const c=find(store.contractors,form.contractorId)||{name:"",contacts:[]};
+  const ct=(c.contacts||[])[form.contactIdx]||{name:"",mobile:""};
+  const s=find(store.supervisors,form.supervisorId)||{name:""};
+  const o=find(store.owners,form.ownerId)||{name:""};
+  const r=form.date?roc(form.date):{y:"",m:"",d:""};
+  const attach=form.attach.trim();
+  return {p,c,ct,s,o,
+    date:`中華民國${r.y}年${r.m}月${r.d}日`,
+    no:docNo(),
+    subject:`${form.lead}「${p.name}」${form.subject.trim()}`,
+    attach:attach?attach+(form.noAtt?"(副本無附件)":""):"",
+    cc:[o.name,c.name].filter(Boolean).join("、"),
+    desc:[`一、依據本機關辦理「${p.name}」之履約管理程序辦理。`,`二、副本抄送${o.name}，以憑辦理相關備查事宜。`],
+    copies:[{label:"正本",to:s.name},{label:"副本",to:o.name},{label:"副本",to:c.name}]};
+}
+const lat=s=>esc(s).replace(/([A-Za-z0-9][A-Za-z0-9.\-]*)/g,'<span class="lat">$1</span>');
+function pageHTML(d,cp){
+  const meta=[["受文者：",cp.to],["發文日期：",d.date],["發文字號：",d.no],["速　　別：","普通件"],["密等及解密條件或保密期限：","普通"]];
+  if(d.attach)meta.push(["附　　件：",d.attach]);
+  return `<div class="page">
+  <div class="lbl">${cp.label}</div>
+  <div class="ttl">${esc(d.c.name)}<span class="han">函</span></div>
+  <div class="addr"><div class="hang12">地址：${lat(d.c.address)}</div><div>聯絡人：${esc(d.ct.name)}</div><div>電話：${lat(d.c.phone)}</div><div>手機：${lat(d.ct.mobile)}</div></div>
+  ${meta.map(([k,v])=>`<div class="meta">${k}${lat(v)}</div>`).join("")}
+  <div class="subj">主旨：${lat(d.subject)}</div>
+  <div class="desc">說明：</div>
+  ${d.desc.map((t,i)=>`<div class="ditem"${i?"":' style="margin-top:3pt"'}>${lat(t)}</div>`).join("")}
+  <div class="foot"><div class="cc">正本：${esc(d.s.name)}</div><div class="cc">副本：${esc(d.cc)}</div>
+  <div class="sign">${esc(d.c.name)}<span class="rep">${esc(d.c.rep||"")}</span></div></div>
+</div>`;
+}
+function renderPreview(){
+  const d=data();
+  $("pages").innerHTML=d.copies.map((cp,i)=>`<div class="pagewrap"><div class="pagecap">${i===0?"正本":"副本"+i}　受文者：${esc(cp.to)}</div>${pageHTML(d,cp)}</div>`).join("");
+  applyZoom();updateSaveState();
+}
+function applyZoom(){const z=+$("zoom").value;$("zoomVal").textContent=z+"%";document.querySelectorAll(".pagewrap .page").forEach(p=>p.style.zoom=z/100);}
+
+/* ---------- Word 產生 ---------- */
+const xe=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function R(t,sz,o={}){return `<w:r><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:eastAsia="標楷體" w:cs="Calibri"/>${o.b?"<w:b/><w:bCs/>":""}${o.sp?`<w:spacing w:val="${o.sp}"/>`:""}<w:sz w:val="${sz*2}"/><w:szCs w:val="${sz*2}"/></w:rPr><w:t xml:space="preserve">${xe(t)}</w:t></w:r>`;}
+const TAB="<w:r><w:tab/></w:r>";
+function P(runs,o={}){
+  const tw=v=>Math.round(v*20);
+  let pPr="";
+  if(o.pb)pPr+="<w:pageBreakBefore/>";
+  if(o.tab)pPr+=`<w:tabs><w:tab w:val="left" w:pos="${tw(o.tab)}"/></w:tabs>`;
+  pPr+=`<w:snapToGrid w:val="0"/><w:spacing w:before="${tw(o.before||0)}" w:after="${tw(o.after||0)}" w:line="${tw(o.line)}" w:lineRule="exact"/>`;
+  if(o.left||o.hang)pPr+=`<w:ind w:left="${tw((o.left||0)+(o.hang||0))}"${o.hang?` w:hanging="${tw(o.hang)}"`:""}/>`;
+  if(o.jc)pPr+=`<w:jc w:val="${o.jc}"/>`;
+  return `<w:p><w:pPr>${pPr}</w:pPr>${runs}</w:p>`;
+}
+const wu=s=>[...String(s)].reduce((a,ch)=>a+(/[\x00-\x7f]/.test(ch)?0.55:1),0);
+function nLines(s,first,rest){const w=wu(s);return w<=first?1:1+Math.ceil((w-first)/rest);}
+function docXML(){
+  const d=data();let body="";
+  d.copies.forEach((cp,i)=>{
+    body+=P(R(cp.label,12,{b:1}),{line:18,pb:i>0});
+    body+=P(R(d.c.name,20,{b:1})+TAB+R("函",20,{b:1}),{line:28,after:14,left:135,tab:332});
+    body+=P(R("地址："+(d.c.address||""),12),{line:16.7,left:262,hang:36});
+    body+=P(R("聯絡人："+d.ct.name,12),{line:16.7,left:262});
+    body+=P(R("電話："+(d.c.phone||""),12),{line:16.7,left:262});
+    body+=P(R("手機："+d.ct.mobile,12),{line:16.7,left:262});
+    const meta=[["受文者：",cp.to],["發文日期：",d.date],["發文字號：",d.no],["速　　別：","普通件"],["密等及解密條件或保密期限：","普通"]];
+    if(d.attach)meta.push(["附　　件：",d.attach]);
+    meta.forEach(([k,v])=>body+=P(R(k+v,12),{line:16.7}));
+    body+=P(R("主旨："+d.subject,16),{line:20.8,before:41.5,hang:48,jc:"both"});
+    body+=P(R("說明：",16),{line:20.8,before:25.5});
+    d.desc.forEach((t,j)=>body+=P(R(t,16),{line:20.8,before:j?0:3,hang:32,jc:"both"}));
+    const used=54+18+42+16.7*(3+nLines("地址："+(d.c.address||""),19.5,16.5))+meta.reduce((a,[k,v])=>a+16.7*nLines(k+v,41,41),0)+41.5+20.8*nLines("主旨："+d.subject,31,28)+25.5+20.8+3+d.desc.reduce((a,t)=>a+20.8*nLines(t,31,29),0);
+    const gap=Math.max(12,655-used);
+    body+=P(R("正本："+d.s.name,12),{line:16.7,before:gap,hang:36});
+    body+=P(R("副本："+d.cc,12),{line:16.7,hang:36});
+    body+=P(R(d.c.name,20,{b:1})+TAB+R(d.c.rep||"",20,{b:1,sp:240}),{line:28,before:31,left:95,tab:296});
+  });
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:body>${body}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1080" w:right="900" w:bottom="720" w:left="1080" w:header="0" w:footer="0" w:gutter="0"/><w:docGrid w:linePitch="360"/></w:sectPr></w:body></w:document>`;
+}
+const STYLES=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:eastAsia="標楷體" w:cs="Calibri"/><w:kern w:val="2"/><w:sz w:val="24"/><w:szCs w:val="24"/><w:lang w:val="en-US" w:eastAsia="zh-TW"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:widowControl w:val="0"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="a"><w:name w:val="Normal"/></w:style></w:styles>`;
+async function buildDocx(){
+  const z=new JSZip();
+  z.file("[Content_Types].xml",`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>`);
+  z.file("_rels/.rels",`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`);
+  z.file("word/_rels/document.xml.rels",`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`);
+  z.file("word/document.xml",docXML());
+  z.file("word/styles.xml",STYLES);
+  return z.generateAsync({type:"blob",mimeType:"application/vnd.openxmlformats-officedocument.wordprocessingml.document"});
+}
+function fileBase(){return `${form.date.replace(/-/g,".")}_${(find(store.projects,form.projectId)?.name||"發文").slice(0,16)}_發文`;}
+function doPrint(){
+  if(!savedSig||sig()!==savedSig){setStatus("請先儲存內容再列印");return;}
+  const d=data();$("printArea").innerHTML=d.copies.map(cp=>pageHTML(d,cp)).join("");
+  const t=document.title;document.title=fileBase();window.print();document.title=t;
+}
+async function downloadDocx(){
+  const blob=await buildDocx();
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=fileBase()+".docx";document.body.appendChild(a);a.click();
+  setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},2000);setStatus("Word 已下載",true);
+}
+
+/* ---------- 發文紀錄 ---------- */
+async function saveRecord(){
+  const d=data();
+  if(!d.p.id){setStatus("請先選擇或新增案場");return;}
+  if(!d.p.name){setStatus("請先輸入招標工程名稱");$("selProject").focus();return;}
+  syncProject();if(!d.p.prefix)d.p.prefix=form.prefix;
+  const rec={projectId:form.projectId,projectName:d.p.name,contractorId:form.contractorId,contactIdx:form.contactIdx,supervisorId:form.supervisorId,ownerId:form.ownerId,date:form.date,dateCode:dateCode(),prefix:form.prefix,serial:form.serial,docNo:d.no,lead:form.lead,subject:form.subject,attach:form.attach,noAtt:form.noAtt,createdAt:Date.now()};
+  const id=("L"+rec.dateCode+rec.serial+"_"+rec.projectId).replace(/[^A-Za-z0-9_-]/g,"");
+  const snap=clone(store);
+  try{await mutate(o=>{o.store=snap;o.letters=o.letters.filter(l=>l._id!==id);o.letters.unshift({_id:id,...rec});},"發文 "+d.no);
+    setStatus((mode==="gh"?"已儲存到 GitHub：":"已儲存（本機）：")+d.no,true);}
+  catch(e){setStatus("儲存失敗："+e.message);return;}
+  renderRecords();renderAll();savedSig=sig();updateSaveState();
+}
+function renderRecords(){
+  const el=$("rcList");
+  const mine=letters.map((l,i)=>[l,i]).filter(([l])=>l.projectId===form.projectId);
+  if(!mine.length){el.innerHTML=`<div class="empty">此案場尚無發文紀錄。填好內容後按「儲存內容」即會出現在這裡。</div>`;return;}
+  el.innerHTML=mine.map(([l,i])=>`<div class="rec"><span class="no2">${esc(l.date)}</span><div style="min-width:0"><div class="s">${esc(l.docNo)}</div><div class="s hint">${esc(l.projectName)}｜${esc(l.subject)}</div></div><div class="row"><button class="small" data-load="${i}">載入</button><button class="small danger" data-del="${i}">刪除</button></div></div>`).join("");
+}
+$("rcList").addEventListener("click",async e=>{
+  const ld=e.target.dataset.load,dl=e.target.dataset.del;
+  if(ld!=null){const l=letters[+ld];Object.assign(form,{projectId:l.projectId,contractorId:l.contractorId,contactIdx:l.contactIdx||0,supervisorId:l.supervisorId,ownerId:l.ownerId,date:l.date,prefix:l.prefix,serial:l.serial,lead:l.lead||"有關",subject:l.subject,attach:l.attach,noAtt:l.noAtt!==false});$("dlgRecords").hidden=true;renderAll();savedSig=sig();updateSaveState();}
+  if(dl!=null){
+    const b=e.target;if(b.dataset.armed!=="1"){b.dataset.armed="1";b.textContent="確定刪除？";return;}
+    const l=letters[+dl];
+    try{await mutate(o=>{o.letters=o.letters.filter(x=>x._id!==l._id);},"刪除發文 "+l.docNo);setStatus("已刪除",true);}catch(err){setStatus("刪除失敗："+err.message);}
+    renderRecords();renderAll();
+  }
+});
+
+/* ---------- 資料管理 ---------- */
+let mgTab="projects",draft=null;
+function openManage(tab){draft=clone(store);mgTab=tab||mgTab;$("dlgManage").hidden=false;renderManage();}
+function fld(label,key,val,cls="f",ph=""){return `<div class="${cls} f"><label>${label}</label><input data-k="${key}" value="${esc(val)}" placeholder="${esc(ph)}"></div>`;}
+function selF(label,key,arr,val){return `<div class="f"><label>${label}</label><select data-k="${key}"><option value="">（未指定）</option>${arr.map(x=>`<option value="${esc(x.id)}"${x.id===val?" selected":""}>${esc(x.name)}</option>`).join("")}</select></div>`;}
+function renderManage(){
+  document.querySelectorAll("#mgTabs button").forEach(b=>b.classList.toggle("on",b.dataset.t===mgTab));
+  const arr=draft[mgTab];let h="";
+  arr.forEach((x,i)=>{
+    h+=`<div class="item" data-i="${i}">`;
+    if(mgTab==="projects"){
+      h+=fld("招標工程名稱","name",x.name,"wide")+fld("發文字號開頭","prefix",x.prefix,"f","例：硯竹字第")+selF("監造","supervisorId",draft.supervisors,x.supervisorId)+selF("業主","ownerId",draft.owners,x.ownerId)+selF("營造方","contractorId",draft.contractors,x.contractorId);
+    }else if(mgTab==="contractors"){
+      h+=fld("公司名稱","name",x.name)+fld("地址","address",x.address,"wide")+fld("電話","phone",x.phone)+fld("負責人（署名）","rep",x.rep);
+      h+=`<div class="contacts"><span class="lab">聯絡人／手機</span>${(x.contacts||[]).map((ct,j)=>`<div class="row"><input data-ck="name" data-j="${j}" value="${esc(ct.name)}" placeholder="姓名"><input data-ck="mobile" data-j="${j}" value="${esc(ct.mobile)}" placeholder="手機"><button class="small danger" data-delc="${j}">移除</button></div>`).join("")}<div><button class="small" data-addc="1">＋ 聯絡人</button></div></div>`;
+    }else{h+=fld(mgTab==="supervisors"?"監造單位名稱":"業主機關名稱","name",x.name,"wide");}
+    h+=`<div class="act"><button class="small danger" data-delitem="1">刪除此筆</button></div></div>`;
+  });
+  $("mgList").innerHTML=h||`<div class="empty">尚無資料，按「＋ 新增」建立第一筆。</div>`;
+}
+$("mgList").addEventListener("input",e=>{
+  const it=e.target.closest(".item");if(!it)return;const x=draft[mgTab][+it.dataset.i];
+  if(e.target.dataset.k)x[e.target.dataset.k]=e.target.value;
+  if(e.target.dataset.ck)x.contacts[+e.target.dataset.j][e.target.dataset.ck]=e.target.value;
+});
+$("mgList").addEventListener("change",e=>{const it=e.target.closest(".item");if(it&&e.target.dataset.k)draft[mgTab][+it.dataset.i][e.target.dataset.k]=e.target.value;});
+$("mgList").addEventListener("click",e=>{
+  const it=e.target.closest(".item");if(!it)return;const i=+it.dataset.i;const x=draft[mgTab][i];
+  if(e.target.dataset.addc){(x.contacts=x.contacts||[]).push({name:"",mobile:""});renderManage();}
+  if(e.target.dataset.delc!=null){x.contacts.splice(+e.target.dataset.delc,1);renderManage();}
+  if(e.target.dataset.delitem){const b=e.target;if(b.dataset.armed!=="1"){b.dataset.armed="1";b.textContent="確定刪除？";return;}draft[mgTab].splice(i,1);renderManage();}
+});
+$("mgTabs").addEventListener("click",e=>{if(e.target.dataset.t){mgTab=e.target.dataset.t;renderManage();}});
+$("mgAdd").onclick=()=>{
+  const n={projects:{id:uid("p"),name:"",prefix:"",supervisorId:"",ownerId:"",contractorId:draft.contractors[0]?.id||""},contractors:{id:uid("c"),name:"",address:"",phone:"",rep:"",contacts:[{name:"",mobile:""}]},supervisors:{id:uid("s"),name:""},owners:{id:uid("o"),name:""}}[mgTab];
+  draft[mgTab].push(n);renderManage();$("mgList").lastElementChild?.querySelector("input")?.focus();
+};
+$("mgSave").onclick=async()=>{store=draft;draft=clone(store);await saveStore();renderAll();$("dlgManage").hidden=true;};
+$("mgClose").onclick=()=>{$("dlgManage").hidden=true;};
+
+/* ---------- 事件 ---------- */
+document.querySelectorAll("input.combo").forEach(el=>{
+  el.addEventListener("focus",()=>{el.dataset.prev=el.value;el.placeholder=el.value||"下拉選擇或直接輸入";el.value="";});
+  el.addEventListener("blur",()=>{if(el.value.trim()==="")el.value=el.dataset.prev||"";el.placeholder="";});
+});
+$("selProject").onchange=e=>{const p=find(store.projects,form.projectId);const v=e.target.value.trim();if(!p||!v||isLocked(p.id))return;p.name=v;saveStore();renderAll();};
+$("sites").addEventListener("click",e=>{
+  const b=e.target.closest("button");if(!b)return;
+  if(b.id==="siteAdd"){const p={id:uid("p"),name:"",supervisorId:"",ownerId:"",contractorId:store.contractors[0]?.id||"",prefix:""};store.projects.push(p);applyProject(p);savedSig=null;renderAll();saveStore();$("selProject").focus();return;}
+  const p=find(store.projects,b.dataset.pid);if(p&&p.id!==form.projectId){applyProject(p);savedSig=null;renderAll();}
+});
+$("selContractor").onchange=e=>{const r=pick("contractors",e.target,v=>({id:uid("c"),name:v,address:"",phone:"",rep:"",contacts:[]}));if(!r)return;
+  form.contractorId=r.x.id;form.contactIdx=0;if(syncProject()||r.created)saveStore();renderAll();};
+$("selContact").onchange=e=>{const v=e.target.value.trim();const c=find(store.contractors,form.contractorId);if(!v||!c)return;c.contacts=c.contacts||[];
+  let i=c.contacts.findIndex(x=>x.name===v);if(i<0){c.contacts.push({name:v,mobile:""});i=c.contacts.length-1;saveStore();}form.contactIdx=i;renderAll();};
+$("inMobile").onchange=e=>{const c=find(store.contractors,form.contractorId);const ct=c?.contacts?.[form.contactIdx];if(!ct)return;ct.mobile=e.target.value.trim();saveStore();renderPreview();};
+$("selSupervisor").onchange=e=>{const r=pick("supervisors",e.target,v=>({id:uid("s"),name:v}));if(!r)return;form.supervisorId=r.x.id;if(syncProject()||r.created)saveStore();renderAll();};
+$("selOwner").onchange=e=>{const r=pick("owners",e.target,v=>({id:uid("o"),name:v}));if(!r)return;form.ownerId=r.x.id;if(syncProject()||r.created)saveStore();renderAll();};
+$("inDate").onchange=e=>{form.date=e.target.value;form.serial=nextSerial();renderAll();};
+$("inPrefix").oninput=e=>{form.prefix=e.target.value;renderPreview();};
+$("inSerial").oninput=e=>{form.serial=e.target.value.replace(/\D/g,"").slice(0,3);renderPreview();};
+$("inSerial").onblur=e=>{form.serial=pad3(form.serial||"1");e.target.value=form.serial;renderPreview();};
+$("inLead").oninput=e=>{form.lead=e.target.value.trim();renderPreview();};
+$("inSubject").oninput=e=>{form.subject=e.target.value;renderPreview();};
+$("inAttach").oninput=e=>{form.attach=e.target.value;renderPreview();};
+document.querySelectorAll('input[name="noAtt"]').forEach(r=>r.onchange=()=>{form.noAtt=$("noAtt1").checked;renderPreview();});
+$("btnSavePrefix").onclick=async()=>{const p=find(store.projects,form.projectId);if(!p)return;p.prefix=form.prefix;await saveStore();};
+function setPhrase(t){if(typeof t==="string"){form.subject=t;}else{form.subject=t.text||"";if(t.lead)form.lead=t.lead;}}
+$("phSubject").onchange=e=>{if(e.target.value!==""){setPhrase(store.subjectPhrases[+e.target.value]);renderForm();renderPreview();}};
+$("phAttach").onchange=e=>{if(e.target.value!==""){form.attach=store.attachPhrases[+e.target.value];$("inAttach").value=form.attach;renderPreview();}};
+$("phSubjectAdd").onclick=async()=>{const t=form.subject.trim();if(t&&!store.subjectPhrases.some(x=>(typeof x==="string"?x:x.text)===t&&(typeof x==="string"||x.lead===form.lead))){store.subjectPhrases.push({lead:form.lead,text:t});await saveStore();renderForm();}};
+$("phAttachAdd").onclick=async()=>{const t=form.attach.trim();if(t&&!store.attachPhrases.includes(t)){store.attachPhrases.push(t);await saveStore();renderForm();}};
+$("phSubjectDel").onclick=async()=>{const v=$("phSubject").value;if(v!==""){store.subjectPhrases.splice(+v,1);await saveStore();renderForm();}};
+$("phAttachDel").onclick=async()=>{const v=$("phAttach").value;if(v!==""){store.attachPhrases.splice(+v,1);await saveStore();renderForm();}};
+$("btnManage").onclick=()=>openManage();
+$("btnRecords").onclick=()=>{renderRecords();$("dlgRecords").hidden=false;};
+$("rcClose").onclick=()=>{$("dlgRecords").hidden=true;};
+$("btnSave").onclick=saveRecord;
+$("btnPrint").onclick=doPrint;
+$("btnCfg").onclick=openCfg;
+$("cfgClose").onclick=()=>{$("dlgCfg").hidden=true;};
+$("cfgSave").onclick=async()=>{
+  cfg={owner:$("cfgOwner").value.trim(),repo:$("cfgRepo").value.trim(),path:$("cfgPath").value.trim()||"data.json",token:$("cfgToken").value.trim()};
+  lsSet("fawen_cfg",cfg);$("cfgMsg").textContent="連線中…";
+  const ok=await connect();$("cfgMsg").textContent=ok?"連線成功":$("status").textContent;if(ok)$("dlgCfg").hidden=true;
+};
+$("btnDocx").onclick=downloadDocx;
+$("zoom").oninput=applyZoom;
+init();
+</script>
+<div id="printArea"></div>
+</body>
+</html>
