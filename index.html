@@ -146,9 +146,10 @@ button:disabled:hover{border-color:var(--line)}
 <body>
 <div class="wrap">
   <header class="top">
-    <h1><span class="stamp">函</span>工程發文系統<span class="hint" style="font-weight:400;letter-spacing:0">版本 2026.10.23-B</span></h1>
+    <h1><span class="stamp">函</span>工程發文系統<span class="hint" style="font-weight:400;letter-spacing:0">版本 2026.10.23-C</span></h1>
     <div class="btns">
       <span id="status" class="status" style="align-self:center">讀取資料中…</span>
+      <button id="btnPdf" class="primary" hidden>另存 PDF</button>
       <button id="btnCfg">GitHub 連線</button>
       <button id="btnManage">資料管理</button>
       <button id="btnRecords">發文紀錄</button>
@@ -515,30 +516,46 @@ async function buildPdf(){
     return pdf.output("blob");
   }finally{host.remove();}
 }
-/* 選擇存放資料夾（Chrome／Edge 電腦版支援；其他瀏覽器改為一般下載） */
-async function pickDir(){
-  if(!window.showDirectoryPicker)return null;
-  return await window.showDirectoryPicker({id:"fawen",mode:"readwrite",startIn:"documents"});
+/* 另存新檔視窗（Chrome／Edge 電腦版會顯示檔名並可選位置；其他瀏覽器改為一般下載） */
+const FT={docx:{description:"Word 文件",accept:{"application/vnd.openxmlformats-officedocument.wordprocessingml.document":[".docx"]}},
+          pdf:{description:"PDF 文件",accept:{"application/pdf":[".pdf"]}}};
+let lastHandle=null,pendingPdf=null;
+async function pickSave(name,kind){
+  if(!window.showSaveFilePicker)return null;
+  const o={suggestedName:name,types:[FT[kind]],id:"fawen"};if(lastHandle)o.startIn=lastHandle;
+  const h=await window.showSaveFilePicker(o);lastHandle=h;return h;
 }
-async function writeTo(dir,name,blob){const fh=await dir.getFileHandle(name,{create:true});const w=await fh.createWritable();await w.write(blob);await w.close();}
-async function exportFiles(dir){
-  const base=fileBase();
+async function writeHandle(h,blob){const w=await h.createWritable();await w.write(blob);await w.close();}
+function showPdfBar(on){$("btnPdf").hidden=!on;}
+async function savePdfNow(){
+  if(!pendingPdf)return;
+  try{const h=await pickSave(pendingPdf.name,"pdf");if(h){await writeHandle(h,pendingPdf.blob);setStatus("PDF 已儲存："+h.name,true);}
+    else{saveBlob(pendingPdf.blob,pendingPdf.name);setStatus("PDF 已下載",true);}
+    pendingPdf=null;showPdfBar(false);}
+  catch(e){if(e.name==="AbortError")setStatus("已取消儲存 PDF，可再按「另存 PDF」");else setStatus("PDF 存檔失敗："+e.message);}
+}
+/* docxHandle：已選好的 Word 存檔位置；null 表示一般下載 */
+async function exportFiles(docxHandle){
+  const base=docxHandle?docxHandle.name.replace(/\.docx$/i,""):fileBase();
   setStatus("產生 Word 及 PDF 中…");
   const docx=await buildDocx();let pdf=null,pdfErr="";
   try{pdf=await buildPdf();}catch(e){pdfErr=e.message;}
-  if(dir){
-    try{await writeTo(dir,base+".docx",docx);if(pdf)await writeTo(dir,base+".pdf",pdf);
-      setStatus(`已存到「${dir.name}」資料夾：Word${pdf?"＋PDF":"（PDF 失敗："+pdfErr+"）"}`,!!pdf);}
-    catch(e){setStatus("存檔失敗："+e.message);}
+  if(docxHandle){
+    try{await writeHandle(docxHandle,docx);}catch(e){setStatus("Word 存檔失敗："+e.message);return;}
+    if(!pdf){setStatus("Word 已儲存；PDF 失敗："+pdfErr);return;}
+    pendingPdf={blob:pdf,name:base+".pdf"};
+    try{await savePdfNow();}
+    catch(e){}
+    if(pendingPdf){showPdfBar(true);setStatus("Word 已儲存："+docxHandle.name+"，請按「另存 PDF」",true);}
   }else{
     saveBlob(docx,base+".docx");if(pdf)setTimeout(()=>saveBlob(pdf,base+".pdf"),600);
     setStatus(pdf?"Word 及 PDF 已下載":"Word 已下載；PDF 失敗："+pdfErr,!!pdf);
   }
 }
 async function downloadDocx(){
-  let dir=null;
-  try{dir=await pickDir();}catch(e){if(e.name==="AbortError"){setStatus("已取消");return;}dir=null;}
-  await exportFiles(dir);
+  let h=null;
+  try{h=await pickSave(fileBase()+".docx","docx");}catch(e){if(e.name==="AbortError"){setStatus("已取消");return;}h=null;}
+  await exportFiles(h);
 }
 
 /* ---------- 發文紀錄 ---------- */
@@ -547,7 +564,7 @@ async function saveRecord(){
   if(!d.p.id){setStatus("請先選擇或新增案場");return;}
   if(!d.p.name){setStatus("請先輸入招標工程名稱");$("selProject").focus();return;}
   let dir=false;
-  if($("chkLocal").checked){try{dir=await pickDir();}catch(e){dir=e.name==="AbortError"?false:null;}}
+  if($("chkLocal").checked){try{dir=await pickSave(fileBase()+".docx","docx");}catch(e){dir=e.name==="AbortError"?false:null;}}
   syncProject();if(!d.p.prefix)d.p.prefix=form.prefix;
   const rec={projectId:form.projectId,projectName:d.p.name,contractorId:form.contractorId,contactIdx:form.contactIdx,supervisorId:form.supervisorId,ownerId:form.ownerId,date:form.date,dateCode:dateCode(),prefix:form.prefix,serial:form.serial,docNo:d.no,lead:form.lead,subject:form.subject,attach:form.attach,noAtt:form.noAtt,fnSum:form.fnSum||"",createdAt:Date.now()};
   const id=("L"+rec.dateCode+rec.serial+"_"+rec.projectId).replace(/[^A-Za-z0-9_-]/g,"");
@@ -656,6 +673,7 @@ $("rcClose").onclick=()=>{$("dlgRecords").hidden=true;};
 $("btnSave").onclick=saveRecord;
 $("btnPrint").onclick=doPrint;
 $("btnCfg").onclick=openCfg;
+$("btnPdf").onclick=savePdfNow;
 try{$("chkLocal").checked=localStorage.getItem("fawen_saveLocal")!=="0";}catch(e){$("chkLocal").checked=true;}
 $("chkLocal").onchange=e=>{try{localStorage.setItem("fawen_saveLocal",e.target.checked?"1":"0")}catch(err){}};
 $("cfgClose").onclick=()=>{$("dlgCfg").hidden=true;};
