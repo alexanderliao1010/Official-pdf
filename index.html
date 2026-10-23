@@ -192,7 +192,10 @@ button:disabled:hover{border-color:var(--line)}
         <div class="radios" style="min-height:38px">
           <label><input type="radio" name="noAtt" id="noAtt1" value="1" checked>(副本無附件)</label>
           <label><input type="radio" name="noAtt" id="noAtt0" value="0">空白</label></div>
-        <span class="hint">說明欄自動帶入：一、履約管理程序；二、副本抄送業主。</span></div>
+        <span class="hint">說明欄自動帶入：一、履約管理程序；二、副本抄送業主。</span>
+        <label for="inFn" class="lab" style="margin-top:6px">下載檔名摘要（6～10 字，可修改）</label>
+        <input id="inFn" maxlength="14" autocomplete="off">
+        <span id="fnHint" class="hint" style="overflow-wrap:anywhere"></span></div>
     </div>
   </section>
 
@@ -421,6 +424,7 @@ function renderPreview(){
   const d=data();
   $("pages").innerHTML=d.copies.map((cp,i)=>`<div class="pagewrap"><div class="pagecap">${i===0?"正本":"副本"+i}　受文者：${esc(cp.to)}</div>${pageHTML(d,cp)}</div>`).join("");
   applyZoom();updateSaveState();
+  setVal("inFn",form.fnSum||"");$("inFn").placeholder=autoSummary();$("fnHint").textContent="檔名："+fileBase()+".docx／.pdf";
 }
 function applyZoom(){const z=+$("zoom").value;$("zoomVal").textContent=z+"%";document.querySelectorAll(".pagewrap .page").forEach(p=>p.style.zoom=z/100);}
 
@@ -475,7 +479,19 @@ async function buildDocx(){
   z.file("word/styles.xml",STYLES);
   return z.generateAsync({type:"blob",mimeType:"application/vnd.openxmlformats-officedocument.wordprocessingml.document"});
 }
-function fileBase(){return `${form.date.replace(/-/g,".")}_${(find(store.projects,form.projectId)?.name||"發文").slice(0,16)}_發文`;}
+/* 由主旨自動濃縮 6～10 字的檔名摘要 */
+const FN_KW=[[/空氣污染|空污/,"空污費繳費及保險"],[/開工/,"工程開工報告"],[/品質計[畫劃]|施工計[畫劃]/,"施工及品質計畫書"],[/施工日報/,"施工日報表送審"],[/施工日誌/,"施工日誌送審"],[/展延/,"降雨申請工期展延"],[/不合格/,"抽查不合格改善"],[/保險單/,"保險單正副本送審"],[/價差|詢價|預算.*差異/,"預算價差研議"],[/估驗/,"估驗計價申請"],[/竣工/,"工程竣工報告"],[/變更設計/,"變更設計申請"],[/材料.*送審|送審.*材料/,"材料送審"]];
+function autoSummary(){
+  const t=form.subject||"";
+  for(const [re,v] of FN_KW)if(re.test(t))return v;
+  const c=t.replace(/「[^」]*」/g,"").replace(/謹?訂於?\s*[0-9０-９]+年[0-9０-９]+月[0-9０-９]+日/g,"")
+    .replace(/(隨文)?檢[附送]|惠請\s*鑒核|報請\s*鑒核|請\s*查照|詳如說明|敬請|各?[乙一]式[一二三四五]份|[一二三]份|本案|如附件|^有關|[一乙]案/g,"")
+    .split(/[，。、,；;]/).map(x=>x.trim()).filter(Boolean);
+  let r=c[0]||"";if(r.length<6&&c[1])r+=c[1];
+  return r.slice(0,10)||"發文";
+}
+function summary(){return ((form.fnSum||"").trim()||autoSummary()).replace(/[\\/:*?"<>|\s]/g,"");}
+function fileBase(){return `${form.date.replace(/-/g,".")}_${summary()}_發文`;}
 function doPrint(){
   if(!savedSig||sig()!==savedSig){setStatus("請先儲存內容再列印");return;}
   const d=data();$("printArea").innerHTML=d.copies.map(cp=>pageHTML(d,cp)).join("");
@@ -498,12 +514,30 @@ async function buildPdf(){
     return pdf.output("blob");
   }finally{host.remove();}
 }
-async function downloadDocx(){
+/* 選擇存放資料夾（Chrome／Edge 電腦版支援；其他瀏覽器改為一般下載） */
+async function pickDir(){
+  if(!window.showDirectoryPicker)return null;
+  return await window.showDirectoryPicker({id:"fawen",mode:"readwrite",startIn:"documents"});
+}
+async function writeTo(dir,name,blob){const fh=await dir.getFileHandle(name,{create:true});const w=await fh.createWritable();await w.write(blob);await w.close();}
+async function exportFiles(dir){
   const base=fileBase();
-  saveBlob(await buildDocx(),base+".docx");
-  setStatus("Word 已下載，PDF 產生中…");
-  try{const pdf=await buildPdf();setTimeout(()=>saveBlob(pdf,base+".pdf"),600);setStatus("Word 及 PDF 已下載",true);}
-  catch(e){setStatus("Word 已下載；PDF 失敗："+e.message);}
+  setStatus("產生 Word 及 PDF 中…");
+  const docx=await buildDocx();let pdf=null,pdfErr="";
+  try{pdf=await buildPdf();}catch(e){pdfErr=e.message;}
+  if(dir){
+    try{await writeTo(dir,base+".docx",docx);if(pdf)await writeTo(dir,base+".pdf",pdf);
+      setStatus(`已存到「${dir.name}」資料夾：Word${pdf?"＋PDF":"（PDF 失敗："+pdfErr+"）"}`,!!pdf);}
+    catch(e){setStatus("存檔失敗："+e.message);}
+  }else{
+    saveBlob(docx,base+".docx");if(pdf)setTimeout(()=>saveBlob(pdf,base+".pdf"),600);
+    setStatus(pdf?"Word 及 PDF 已下載":"Word 已下載；PDF 失敗："+pdfErr,!!pdf);
+  }
+}
+async function downloadDocx(){
+  let dir=null;
+  try{dir=await pickDir();}catch(e){if(e.name==="AbortError"){setStatus("已取消");return;}dir=null;}
+  await exportFiles(dir);
 }
 
 /* ---------- 發文紀錄 ---------- */
@@ -511,15 +545,17 @@ async function saveRecord(){
   const d=data();
   if(!d.p.id){setStatus("請先選擇或新增案場");return;}
   if(!d.p.name){setStatus("請先輸入招標工程名稱");$("selProject").focus();return;}
+  let dir=false;
+  if($("chkLocal").checked){try{dir=await pickDir();}catch(e){dir=e.name==="AbortError"?false:null;}}
   syncProject();if(!d.p.prefix)d.p.prefix=form.prefix;
-  const rec={projectId:form.projectId,projectName:d.p.name,contractorId:form.contractorId,contactIdx:form.contactIdx,supervisorId:form.supervisorId,ownerId:form.ownerId,date:form.date,dateCode:dateCode(),prefix:form.prefix,serial:form.serial,docNo:d.no,lead:form.lead,subject:form.subject,attach:form.attach,noAtt:form.noAtt,createdAt:Date.now()};
+  const rec={projectId:form.projectId,projectName:d.p.name,contractorId:form.contractorId,contactIdx:form.contactIdx,supervisorId:form.supervisorId,ownerId:form.ownerId,date:form.date,dateCode:dateCode(),prefix:form.prefix,serial:form.serial,docNo:d.no,lead:form.lead,subject:form.subject,attach:form.attach,noAtt:form.noAtt,fnSum:form.fnSum||"",createdAt:Date.now()};
   const id=("L"+rec.dateCode+rec.serial+"_"+rec.projectId).replace(/[^A-Za-z0-9_-]/g,"");
   const snap=clone(store);
   try{await mutate(o=>{o.store=snap;o.letters=o.letters.filter(l=>l._id!==id);o.letters.unshift({_id:id,...rec});},"發文 "+d.no);
     setStatus((mode==="gh"?"已儲存到 GitHub 及本機：":"已儲存（本機）：")+d.no,true);}
   catch(e){setStatus("儲存失敗："+e.message);return;}
   renderRecords();renderAll();savedSig=sig();updateSaveState();
-  if($("chkLocal").checked)downloadDocx();
+  if($("chkLocal").checked&&dir!==false)exportFiles(dir);
 }
 function renderRecords(){
   const el=$("rcList");
@@ -529,7 +565,7 @@ function renderRecords(){
 }
 $("rcList").addEventListener("click",async e=>{
   const ld=e.target.dataset.load,dl=e.target.dataset.del;
-  if(ld!=null){const l=letters[+ld];Object.assign(form,{projectId:l.projectId,contractorId:l.contractorId,contactIdx:l.contactIdx||0,supervisorId:l.supervisorId,ownerId:l.ownerId,date:l.date,prefix:l.prefix,serial:l.serial,lead:l.lead||"有關",subject:l.subject,attach:l.attach,noAtt:l.noAtt!==false});$("dlgRecords").hidden=true;renderAll();savedSig=sig();updateSaveState();}
+  if(ld!=null){const l=letters[+ld];Object.assign(form,{projectId:l.projectId,contractorId:l.contractorId,contactIdx:l.contactIdx||0,supervisorId:l.supervisorId,ownerId:l.ownerId,date:l.date,prefix:l.prefix,serial:l.serial,lead:l.lead||"有關",subject:l.subject,attach:l.attach,noAtt:l.noAtt!==false,fnSum:l.fnSum||""});$("dlgRecords").hidden=true;renderAll();savedSig=sig();updateSaveState();}
   if(dl!=null){
     const b=e.target;if(b.dataset.armed!=="1"){b.dataset.armed="1";b.textContent="確定刪除？";return;}
     const l=letters[+dl];
@@ -601,11 +637,12 @@ $("inPrefix").oninput=e=>{form.prefix=e.target.value;renderPreview();};
 $("inSerial").oninput=e=>{form.serial=e.target.value.replace(/\D/g,"").slice(0,3);renderPreview();};
 $("inSerial").onblur=e=>{form.serial=pad3(form.serial||"1");e.target.value=form.serial;renderPreview();};
 $("inLead").oninput=e=>{form.lead=e.target.value.trim();renderPreview();};
-$("inSubject").oninput=e=>{form.subject=e.target.value;renderPreview();};
+$("inSubject").oninput=e=>{form.subject=e.target.value;form.fnSum="";$("inFn").value="";renderPreview();};
+$("inFn").oninput=e=>{form.fnSum=e.target.value;renderPreview();};
 $("inAttach").oninput=e=>{form.attach=e.target.value;renderPreview();};
 document.querySelectorAll('input[name="noAtt"]').forEach(r=>r.onchange=()=>{form.noAtt=$("noAtt1").checked;renderPreview();});
 $("btnSavePrefix").onclick=async()=>{const p=find(store.projects,form.projectId);if(!p)return;p.prefix=form.prefix;await saveStore();};
-function setPhrase(t){if(typeof t==="string"){form.subject=t;}else{form.subject=t.text||"";if(t.lead)form.lead=t.lead;}}
+function setPhrase(t){form.fnSum="";if(typeof t==="string"){form.subject=t;}else{form.subject=t.text||"";if(t.lead)form.lead=t.lead;}}
 $("phSubject").onchange=e=>{if(e.target.value!==""){setPhrase(store.subjectPhrases[+e.target.value]);renderForm();renderPreview();}};
 $("phAttach").onchange=e=>{if(e.target.value!==""){form.attach=store.attachPhrases[+e.target.value];$("inAttach").value=form.attach;renderPreview();}};
 $("phSubjectAdd").onclick=async()=>{const t=form.subject.trim();if(t&&!store.subjectPhrases.some(x=>(typeof x==="string"?x:x.text)===t&&(typeof x==="string"||x.lead===form.lead))){store.subjectPhrases.push({lead:form.lead,text:t});await saveStore();renderForm();}};
