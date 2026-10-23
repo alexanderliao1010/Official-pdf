@@ -146,7 +146,7 @@ button:disabled:hover{border-color:var(--line)}
 <body>
 <div class="wrap">
   <header class="top">
-    <h1><span class="stamp">函</span>工程發文系統</h1>
+    <h1><span class="stamp">函</span>工程發文系統<span class="hint" style="font-weight:400;letter-spacing:0">版本 2026.10.23-B</span></h1>
     <div class="btns">
       <span id="status" class="status" style="align-self:center">讀取資料中…</span>
       <button id="btnCfg">GitHub 連線</button>
@@ -489,10 +489,10 @@ function autoSummary(){
     .replace(/(隨文)?檢[附送]|惠請\s*鑒核|報請\s*鑒核|請\s*查照|詳如說明|敬請|各?[乙一]式[一二三四五]份|[一二三]份|本案|如附件|^有關|[一乙]案/g,"")
     .split(/[，。、,；;]/).map(x=>x.trim()).filter(Boolean);
   let r=c[0]||"";if(r.length<6&&c[1])r+=c[1];
-  return r.slice(0,10)||"發文";
+  return r.slice(0,10);
 }
 function summary(){return ((form.fnSum||"").trim()||autoSummary()).replace(/[\\/:*?"<>|\s]/g,"");}
-function fileBase(){return `${form.date.replace(/-/g,".")}_${summary()}_發文`;}
+function fileBase(){const m=summary();return `${form.date.replace(/-/g,".")}_${m?m+"_":""}發文`;}
 function doPrint(){
   if(!savedSig||sig()!==savedSig){setStatus("請先儲存內容再列印");return;}
   const d=data();$("printArea").innerHTML=d.copies.map(cp=>pageHTML(d,cp)).join("");
