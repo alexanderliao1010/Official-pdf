@@ -107,6 +107,25 @@
  },
  "letters": [
   {
+   "_id": "L1151023003_p1",
+   "projectId": "p1",
+   "projectName": "農業部林業及自然保育署新竹分署國產材推廣中心景觀綠美化工程",
+   "contractorId": "c1",
+   "contactIdx": 0,
+   "supervisorId": "s1",
+   "ownerId": "o1",
+   "date": "2026-10-23",
+   "dateCode": "1151023",
+   "prefix": "硯竹字第",
+   "serial": "003",
+   "docNo": "硯竹字第1151023003號",
+   "lead": "有關",
+   "subject": "謹訂於115年10月05日正式開工，隨文檢附工程開工報告表及工地相關人員登錄表各乙式三份，惠請鑒核。",
+   "attach": "工程開工報告表、工地相關人員登錄表",
+   "noAtt": true,
+   "createdAt": 1792767470935
+  },
+  {
    "_id": "L1151023002_p1",
    "projectId": "p1",
    "projectName": "農業部林業及自然保育署新竹分署國產材推廣中心景觀綠美化工程",
