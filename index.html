@@ -7,6 +7,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=LXGW+WenKai+TC:wght@400;700&display=swap">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
 /* 版面：上方輸入工作台（格線，窄螢幕堆疊），下方 A4 公文預覽列（正本＋副本×2，可橫向捲動） */
 :root{
@@ -150,7 +152,7 @@ button:disabled:hover{border-color:var(--line)}
       <button id="btnCfg">GitHub 連線</button>
       <button id="btnManage">資料管理</button>
       <button id="btnRecords">發文紀錄</button>
-      <button id="btnDocx" class="primary">下載 Word</button>
+      <button id="btnDocx" class="primary">下載 Word＋PDF</button>
     </div>
   </header>
 
@@ -159,7 +161,7 @@ button:disabled:hover{border-color:var(--line)}
   <section class="panel">
     <div class="panel-bar">
       <div class="row" style="min-width:0"><strong id="siteTitle"></strong><span id="lockPill" class="lockpill"></span></div>
-      <div class="btns"><span id="saveState" class="hint" style="align-self:center"></span><button id="btnSave" class="primary">儲存內容</button><button id="btnPrint" disabled title="儲存後才能列印">列印</button></div>
+      <div class="btns"><span id="saveState" class="hint" style="align-self:center"></span><label class="hint" style="display:flex;gap:5px;align-items:center;cursor:pointer"><input type="checkbox" id="chkLocal" style="width:auto">同時存到本機（Word＋PDF）</label><button id="btnSave" class="primary">儲存內容</button><button id="btnPrint" disabled title="儲存後才能列印">列印</button></div>
     </div>
     <div class="grid">
       <div class="f c6"><label for="selProject">招標工程名稱</label>
@@ -237,20 +239,7 @@ button:disabled:hover{border-color:var(--line)}
 </div>
 
 <script>
-const DEFAULTS={
-  contractors:[{id:"c1",name:"硯森營造有限公司",address:"新竹市東區綠水里光復路二段295號14樓之8",phone:"03-353-0288",rep:"李豐榆",contacts:[{name:"廖曉華",mobile:"0926-992648"},{name:"李豐榆",mobile:"0915-255-998"}]}],
-  supervisors:[{id:"s1",name:"豫青設計有限公司"},{id:"s2",name:"聯安工程顧問有限公司"}],
-  owners:[{id:"o1",name:"農業部林業及自然保育署新竹分署"},{id:"o2",name:"桃園市大溪區公所"}],
-  projects:[
-    {id:"p1",name:"農業部林業及自然保育署新竹分署國產材推廣中心景觀綠美化工程",supervisorId:"s1",ownerId:"o1",contractorId:"c1",prefix:"硯竹字第"},
-    {id:"p2",name:"大溪區綜合市民活動中心4樓桌球場域及多功能教室設置計畫",supervisorId:"s2",ownerId:"o2",contractorId:"c1",prefix:"硯桃市溪字第"}],
-  subjectPhrases:[
-    "謹訂於115年10月05日正式開工，隨文檢附工程開工報告表及工地相關人員登錄表各乙式三份，惠請鑒核。",
-    "整體施工計畫及品質計畫各一式三份，惠請鑒核。",
-    "已完成營建工程空氣污染防制費繳費，隨文檢附營造綜合保險單及雇主意外責任保險單正本各一份，以及營建工程空氣污染防制費繳費收據影本一份，惠請鑒核。",
-    "運動地墊項目預算與廠商詢價金額差異一案，敬請協助釐清並提報業主研議，請查照。"],
-  attachPhrases:["工程開工報告表、工地相關人員登錄表","整體施工計畫書及品質計畫書一式三份","營造綜合保險單、雇主意外責任保險單、營建工程空氣污染防制費繳費收據影本"]
-};
+const DEFAULTS={contractors:[],supervisors:[],owners:[],projects:[],subjectPhrases:[],attachPhrases:[]};
 const $=id=>document.getElementById(id);
 const clone=o=>JSON.parse(JSON.stringify(o));
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -297,7 +286,7 @@ async function mutate(fn,msg){
   for(let t=0;t<3;t++){
     const g=await ghGet();const o=g.missing?normalize({store:clone(store),letters:clone(letters)}):g.obj;
     fn(o);const p=await ghPut(o,g.missing?null:g.sha,msg);
-    if(!p.conflict){fileSha=p.sha;store=o.store;letters=o.letters;return true;}
+    if(!p.conflict){fileSha=p.sha;store=o.store;letters=o.letters;lsSet("fawen_local",{store,letters});return true;}
   }
   throw new Error("資料同時被修改，請重新整理後再試");
 }
@@ -313,8 +302,10 @@ async function connect(){
     const g=await ghGet();mode="gh";
     if(g.missing){const o=normalize({store:clone(store||DEFAULTS),letters:clone(letters)});const p=await ghPut(o,null,"建立發文資料");fileSha=p.sha;store=o.store;letters=o.letters;setStatus("已在 GitHub 建立 "+cfg.path,true);}
     else{fileSha=g.sha;store=g.obj.store;letters=g.obj.letters;setStatus("已連線 GitHub",true);}
+    lsSet("fawen_local",{store,letters});
     form.projectId="";renderAll(true);return true;
-  }catch(e){mode="local";setStatus("GitHub 連線失敗："+e.message);return false;}
+  }catch(e){mode="local";const l=lsGet("fawen_local");if(l){const n=normalize(l);store=n.store;letters=n.letters;renderAll(true);}
+    setStatus("GitHub 連線失敗（"+e.message+"），目前使用本機資料");return false;}
 }
 async function init(){
   store=clone(DEFAULTS);letters=[];renderAll(true);
@@ -490,10 +481,29 @@ function doPrint(){
   const d=data();$("printArea").innerHTML=d.copies.map(cp=>pageHTML(d,cp)).join("");
   const t=document.title;document.title=fileBase();window.print();document.title=t;
 }
+function saveBlob(blob,name){
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();
+  setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},4000);
+}
+async function buildPdf(){
+  if(!window.html2canvas||!window.jspdf)throw new Error("PDF 元件載入失敗，請重新整理");
+  const host=document.createElement("div");host.style.cssText="position:fixed;left:-30000px;top:0";
+  const d=data();host.innerHTML=d.copies.map(cp=>pageHTML(d,cp)).join("");document.body.appendChild(host);
+  try{
+    try{await document.fonts.ready;}catch(e){}
+    const pdf=new window.jspdf.jsPDF({unit:"pt",format:"a4"});const pg=host.querySelectorAll(".page");
+    for(let i=0;i<pg.length;i++){pg[i].style.boxShadow="none";
+      const cv=await html2canvas(pg[i],{scale:2.5,backgroundColor:"#ffffff",logging:false});
+      if(i)pdf.addPage();pdf.addImage(cv.toDataURL("image/jpeg",0.92),"JPEG",0,0,595.28,841.89);}
+    return pdf.output("blob");
+  }finally{host.remove();}
+}
 async function downloadDocx(){
-  const blob=await buildDocx();
-  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=fileBase()+".docx";document.body.appendChild(a);a.click();
-  setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},2000);setStatus("Word 已下載",true);
+  const base=fileBase();
+  saveBlob(await buildDocx(),base+".docx");
+  setStatus("Word 已下載，PDF 產生中…");
+  try{const pdf=await buildPdf();setTimeout(()=>saveBlob(pdf,base+".pdf"),600);setStatus("Word 及 PDF 已下載",true);}
+  catch(e){setStatus("Word 已下載；PDF 失敗："+e.message);}
 }
 
 /* ---------- 發文紀錄 ---------- */
@@ -506,9 +516,10 @@ async function saveRecord(){
   const id=("L"+rec.dateCode+rec.serial+"_"+rec.projectId).replace(/[^A-Za-z0-9_-]/g,"");
   const snap=clone(store);
   try{await mutate(o=>{o.store=snap;o.letters=o.letters.filter(l=>l._id!==id);o.letters.unshift({_id:id,...rec});},"發文 "+d.no);
-    setStatus((mode==="gh"?"已儲存到 GitHub：":"已儲存（本機）：")+d.no,true);}
+    setStatus((mode==="gh"?"已儲存到 GitHub 及本機：":"已儲存（本機）：")+d.no,true);}
   catch(e){setStatus("儲存失敗："+e.message);return;}
   renderRecords();renderAll();savedSig=sig();updateSaveState();
+  if($("chkLocal").checked)downloadDocx();
 }
 function renderRecords(){
   const el=$("rcList");
@@ -607,6 +618,8 @@ $("rcClose").onclick=()=>{$("dlgRecords").hidden=true;};
 $("btnSave").onclick=saveRecord;
 $("btnPrint").onclick=doPrint;
 $("btnCfg").onclick=openCfg;
+try{$("chkLocal").checked=localStorage.getItem("fawen_saveLocal")!=="0";}catch(e){$("chkLocal").checked=true;}
+$("chkLocal").onchange=e=>{try{localStorage.setItem("fawen_saveLocal",e.target.checked?"1":"0")}catch(err){}};
 $("cfgClose").onclick=()=>{$("dlgCfg").hidden=true;};
 $("cfgSave").onclick=async()=>{
   cfg={owner:$("cfgOwner").value.trim(),repo:$("cfgRepo").value.trim(),path:$("cfgPath").value.trim()||"data.json",token:$("cfgToken").value.trim()};
