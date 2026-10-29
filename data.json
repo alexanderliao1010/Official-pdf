@@ -29,7 +29,12 @@
     "address": "",
     "phone": "",
     "rep": "",
-    "contacts": []
+    "contacts": [
+     {
+      "name": "陳立民",
+      "mobile": ""
+     }
+    ]
    }
   ],
   "owners": [
