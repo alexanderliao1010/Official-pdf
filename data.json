@@ -67,7 +67,7 @@
    {
     "id": "pmvsyqgfx94g",
     "name": "澎湖窟三號埤整體改善工程",
-    "supervisorId": "s1",
+    "supervisorId": "smvsyr6tqo1p",
     "ownerId": "o1",
     "contractorId": "cmvsyqrd3rix",
     "prefix": ""
@@ -123,6 +123,10 @@
    {
     "id": "s2",
     "name": "聯安工程顧問有限公司"
+   },
+   {
+    "id": "smvsyr6tqo1p",
+    "name": "尚 強 技 術 顧 問 有 限 公 司"
    }
   ]
  },
